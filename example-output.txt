@@ -1,0 +1,14 @@
+$ ./ssl-watch.sh --config-dir /etc/ssl-watch --domains shop.example.com,api.example.com,old.example.com,nonexistent.invalid
+DOMAIN                               STATUS      DAYS  EXPIRES     ISSUER
+shop.example.com                     CRITICAL       4  2026-10-26  R11
+api.example.com                      OK            89  2027-01-19  R10
+old.example.com                      WARNING        9  2026-10-31  R11
+nonexistent.invalid                  ERROR          -  -           -  (could not connect or no certificate)
+cloudflare.com                       OK            44  2026-12-05  Google Trust Services
+github.com                           OK            39  2026-11-30  Sectigo Limited
+progineous.com                       OK            52  2026-12-12  Google Trust Services
+www.progineous.com                   OK            52  2026-12-12  Google Trust Services
+
+Checked 8 domain(s). Warn under 14 days, critical under 7. Exit code 2.
+$ echo $?
+2
