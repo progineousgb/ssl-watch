@@ -12,6 +12,14 @@ Check other domains without scanning anything:
 curl -fsSL https://raw.githubusercontent.com/progineousgb/ssl-watch/main/ssl-watch.sh | bash -s -- --no-scan --domains example.com,shop.example.com:8443
 ```
 
+IPv6 addresses go in brackets when a port is given: `[2001:db8::1]:8443`. A bare `2001:db8::1` uses port 443. SNI is not sent for an IP address, and the address is matched against the certificate's IP entries.
+
+## Platform
+
+- Linux: works with bash 4 or newer, openssl, and GNU `timeout`.
+- macOS: needs bash 4 or newer (`brew install bash`; the system bash 3.2 is too old) and openssl. `timeout` comes from `gtimeout` (`brew install coreutils`) when present, otherwise the script uses a perl alarm, and perl ships with macOS. Scanning only finds configs under the usual Linux paths, so use `--no-scan --domains`.
+- Windows: run it in WSL or Git Bash with openssl installed.
+
 ## Example output
 
 Real run. The `localhost` entries are throwaway self-signed certificates made for the test (5, 10 and 90 days), `nonexistent.invalid` shows an unreachable host, and the rest came from test nginx, apache and caddy configs.
