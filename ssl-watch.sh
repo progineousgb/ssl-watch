@@ -3,7 +3,7 @@
 # Maintained by Pro Gineous (https://progineous.com). MIT licensed.
 set -euo pipefail
 
-VERSION="1.0.0"
+VERSION="1.0.1"
 WARN_DAYS=14
 CRIT_DAYS=7
 JSON=0
@@ -139,8 +139,30 @@ to_epoch() {
   date -d "$1" +%s 2>/dev/null || date -j -f "%b %d %T %Y %Z" "$1" +%s 2>/dev/null || echo ""
 }
 
+# GNU timeout on Linux, gtimeout from Homebrew coreutils on macOS, then a perl
+# alarm (perl ships with macOS) so a silent server cannot hang the run.
 run_timeout() {
-  if command -v timeout >/dev/null 2>&1; then timeout "$TIMEOUT" "$@"; else "$@"; fi
+  if command -v timeout >/dev/null 2>&1; then timeout "$TIMEOUT" "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then gtimeout "$TIMEOUT" "$@"
+  elif command -v perl >/dev/null 2>&1; then perl -e 'alarm shift; exec @ARGV or exit 127' "$TIMEOUT" "$@"
+  else "$@"; fi
+}
+
+# Split host[:port], [ipv6]:port, [ipv6], or a bare IPv6 address.
+# Sets HOST, PORT_OUT, and CONNECT (the -connect argument).
+split_entry() {
+  local e=$1
+  HOST=$e; PORT_OUT=$PORT
+  if [[ "$e" == \[*\]* ]]; then
+    HOST=${e#\[}; HOST=${HOST%%\]*}
+    local rest=${e#*\]}
+    [[ "$rest" == :* ]] && PORT_OUT=${rest#:}
+  elif [[ "$e" == *:*:* ]]; then
+    HOST=$e
+  elif [[ "$e" == *:* ]]; then
+    HOST=${e%%:*}; PORT_OUT=${e##*:}
+  fi
+  if [[ "$HOST" == *:* ]]; then CONNECT="[$HOST]:$PORT_OUT"; else CONNECT="$HOST:$PORT_OUT"; fi
 }
 
 NOW=$(date +%s)
@@ -148,10 +170,12 @@ WORST=0
 ROWS=()   # status|domain|days|expiry|issuer|note
 
 for entry in "${DOMAINS[@]}"; do
-  host=${entry%%:*}
-  port=$PORT
-  [[ "$entry" == *:* ]] && port=${entry##*:}
-  cert=$(run_timeout openssl s_client -connect "$host:$port" -servername "$host" </dev/null 2>/dev/null \
+  split_entry "$entry"
+  host=$HOST
+  sni=(-servername "$host")
+  # SNI must be a DNS name, so skip it for an IP address.
+  [[ "$host" == *:* || "$host" =~ ^[0-9.]+$ ]] && sni=()
+  cert=$(run_timeout openssl s_client -connect "$CONNECT" ${sni[@]+"${sni[@]}"} </dev/null 2>/dev/null \
          | openssl x509 -noout -enddate -issuer -subject -ext subjectAltName 2>/dev/null) || cert=""
   if [[ -z "$cert" ]]; then
     ROWS+=("error|$entry|||| could not connect or no certificate")
@@ -168,7 +192,7 @@ for entry in "${DOMAINS[@]}"; do
   fi
   days=$(( (exp - NOW) / 86400 ))
   note=""
-  sans=$(grep -A1 'Subject Alternative Name' <<<"$cert" | tail -1 | tr -d ' ' | tr ',' '\n' | sed -n 's/^DNS://p')
+  sans=$(grep -A1 'Subject Alternative Name' <<<"$cert" | tail -1 | tr -d ' ' | tr ',' '\n' | sed -n 's/^DNS://p; s/^IPAddress://p')
   match=0
   while IFS= read -r san; do
     [[ -z "$san" ]] && continue
